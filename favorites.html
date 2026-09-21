@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Избранное — YouTube Subtitle AI Explain</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #121212;
+      --card: #1c1c1e;
+      --text: #f1f1f1;
+      --muted: #9aa0a6;
+      --accent: #7c4dff;
+      --error: #ff8a80;
+      --ok: #81c995;
+      --star: #ffd54f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #1d1b2e, var(--bg) 60%);
+      color: var(--text);
+      font: 400 14px/1.55 Roboto, Arial, sans-serif;
+    }
+    .wrap { width: min(880px, 94vw); margin: 0 auto; padding: 32px 0 64px; }
+    header.page { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    h1 { margin: 0; font-size: 22px; }
+    .count { color: var(--muted); font-size: 13px; }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin: 18px 0 22px;
+    }
+    input[type="search"], select {
+      padding: 9px 12px;
+      border: 1px solid rgba(255, 255, 255, .14);
+      border-radius: 8px;
+      background: #101012;
+      color: var(--text);
+      font: inherit;
+    }
+    input[type="search"] { flex: 1; min-width: 200px; }
+    input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .ghost, .primary {
+      border: none;
+      border-radius: 8px;
+      padding: 9px 14px;
+      font: 600 13px/1 Roboto, Arial, sans-serif;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .primary { background: var(--accent); color: #fff; }
+    .primary:hover { filter: brightness(1.1); }
+    .ghost { background: rgba(255, 255, 255, .1); color: var(--text); }
+    .ghost:hover { background: rgba(255, 255, 255, .16); }
+    .list { display: flex; flex-direction: column; gap: 12px; }
+    .card {
+      background: var(--card);
+      border: 1px solid rgba(255, 255, 255, .08);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .term { font-weight: 600; font-size: 15px; color: #fff; }
+    .term-tr { color: #cfcfcf; }
+    .kind {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: #b39ddb;
+      border: 1px solid rgba(124, 77, 255, .5);
+      border-radius: 999px;
+      padding: 1px 7px;
+    }
+    .badge-idiom {
+      font-size: 11px;
+      color: #ffd54f;
+      border: 1px solid rgba(255, 213, 79, .45);
+      border-radius: 999px;
+      padding: 1px 7px;
+    }
+    .learned-badge { font-size: 11px; color: var(--ok); }
+    .note { color: var(--muted); margin-top: 4px; }
+    .examples { margin: 10px 0 0; padding-left: 18px; }
+    .examples li { margin: 4px 0; }
+    .examples .example-tr { color: var(--muted); }
+    .context {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, .07);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .context .ctx-phrase { font-style: italic; }
+    .card-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .card-actions a { color: #b39ddb; font-size: 13px; text-decoration: none; }
+    .card-actions a:hover { text-decoration: underline; }
+    .card-actions .spacer { flex: 1; }
+    .link-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 0;
+    }
+    .link-btn:hover { color: var(--text); }
+    .link-btn.danger:hover { color: var(--error); }
+    .learned .term { opacity: .6; }
+    .empty { color: var(--muted); text-align: center; padding: 48px 0; }
+    .status { font-size: 13px; color: var(--muted); }
+    .status.err { color: var(--error); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="page">
+      <h1>⭐ Избранное</h1>
+      <span class="count" id="count"></span>
+      <span class="status" id="status" role="status"></span>
+    </header>
+
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Поиск по слову, переводу или контексту…" autocomplete="off">
+      <select id="filter">
+        <option value="all">Все</option>
+        <option value="word">Слова</option>
+        <option value="phrase">Фразы</option>
+        <option value="unlearned">Не выучено</option>
+      </select>
+      <button id="export-json" type="button" class="ghost">Экспорт JSON</button>
+      <button id="export-csv" type="button" class="ghost">Экспорт CSV</button>
+    </div>
+
+    <div class="list" id="list"></div>
+  </div>
+  <script src="favorites.js"></script>
+</body>
+</html>

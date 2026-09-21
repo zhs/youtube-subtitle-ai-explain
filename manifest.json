@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Subtitle AI Explain",
+  "version": "1.0.0",
+  "description": "Перевод и лингвистический разбор фразы субтитров YouTube с помощью DeepSeek при паузе видео.",
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": ["https://www.youtube.com/*", "https://api.deepseek.com/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "YouTube Subtitle AI Explain — настройки" },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["page-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

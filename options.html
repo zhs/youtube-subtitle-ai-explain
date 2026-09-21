@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>YouTube Subtitle AI Explain — настройки</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #121212;
+      --card: #1c1c1e;
+      --text: #f1f1f1;
+      --muted: #9aa0a6;
+      --accent: #7c4dff;
+      --error: #ff8a80;
+      --ok: #81c995;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at top, #1d1b2e, var(--bg) 60%);
+      color: var(--text);
+      font: 400 14px/1.55 Roboto, Arial, sans-serif;
+    }
+    .card {
+      width: min(520px, 92vw);
+      padding: 28px;
+      background: var(--card);
+      border: 1px solid rgba(255, 255, 255, .08);
+      border-radius: 16px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+    }
+    h1 { margin: 0 0 6px; font-size: 20px; }
+    .sub { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+    .field { display: block; margin-bottom: 16px; }
+    .field > span { display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; }
+    .key-row { display: flex; gap: 8px; }
+    input[type="password"], input[type="text"], select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid rgba(255, 255, 255, .14);
+      border-radius: 8px;
+      background: #101012;
+      color: var(--text);
+      font: inherit;
+    }
+    input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .ghost, .primary {
+      border: none;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font: 600 13px/1 Roboto, Arial, sans-serif;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .primary { background: var(--accent); color: #fff; }
+    .primary:hover { filter: brightness(1.1); }
+    .ghost { background: rgba(255, 255, 255, .1); color: var(--text); }
+    .ghost:hover { background: rgba(255, 255, 255, .16); }
+    .actions { display: flex; align-items: center; gap: 10px; margin-top: 20px; }
+    .status { font-size: 13px; color: var(--muted); }
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--error); }
+    .hint { margin: 20px 0 0; color: var(--muted); font-size: 12px; }
+    .hint a { color: #b39ddb; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>YouTube Subtitle AI Explain</h1>
+    <p class="sub">Ключ хранится в chrome.storage.sync и используется только для запросов к api.deepseek.com.</p>
+    <form id="settings-form">
+      <label class="field">
+        <span>DeepSeek API Key</span>
+        <div class="key-row">
+          <input id="api-key" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false">
+          <button id="toggle-key" type="button" class="ghost">Показать</button>
+        </div>
+      </label>
+      <label class="field">
+        <span>Модель</span>
+        <select id="model">
+          <option value="deepseek-chat">deepseek-chat — быстрый перевод и разбор</option>
+          <option value="deepseek-reasoner">deepseek-reasoner (R1) — глубокий разбор</option>
+        </select>
+      </label>
+      <div class="actions">
+        <button type="submit" class="primary">Сохранить</button>
+        <button id="check-key" type="button" class="ghost">Проверить ключ</button>
+        <button id="open-favorites" type="button" class="ghost">Открыть словарь</button>
+        <span id="status" class="status" role="status"></span>
+      </div>
+    </form>
+    <p class="hint">
+      Ключ можно получить на <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">platform.deepseek.com</a>.
+      После сохранения откройте видео на YouTube, поставьте паузу и нажмите «✨ Объяснить с помощью ИИ».
+    </p>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>
