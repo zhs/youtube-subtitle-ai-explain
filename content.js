@@ -8,6 +8,14 @@ const FETCH_TIMEOUT_MS = 20000;
 const CAPTION_CAPTURE_TIMEOUT_MS = 6000;
 const CAPTURED_LIMIT = 6;
 const ASR_SENTENCE_GAP_SEC = 1.5;
+const PHRASE_CACHE_PREFIX = 'phrases:';
+const PHRASE_CACHE_INDEX = 'phrases:index';
+const EXPLAIN_CACHE_PREFIX = 'explain:';
+const EXPLAIN_CACHE_INDEX = 'explain:index';
+const CACHE_SCHEMA_VERSION = 1;
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const PHRASE_CACHE_MAX = 30;
+const EXPLAIN_CACHE_MAX = 200;
 
 const CONTROL_ICON_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:24px;height:24px;display:block;pointer-events:none;">
@@ -438,6 +446,13 @@ function renderResult(response) {
   }
 }
 
+function applyExplainResult(result) {
+  if (state.currentContext && result && result.data) {
+    state.currentContext.translation = result.data.translation || '';
+  }
+  renderResult(result);
+}
+
 function renderStructured(data) {
   state.lastResult = data;
   const body = state.modalBody;
@@ -634,11 +649,23 @@ async function onExplainClick() {
     };
     renderStatus('Анализирую фразу с помощью DeepSeek…');
 
+    const settings = await chrome.storage.sync.get({ model: 'deepseek-chat' });
+    const model = settings.model === 'deepseek-reasoner' ? 'deepseek-reasoner' : 'deepseek-chat';
+    const cacheId = makeExplainCacheId(state.currentContext.videoId, model, phrases[index].start, payload.currentText);
+
+    const cached = await readExplainCache(cacheId);
+    if (requestId !== state.requestSeq || !state.modalOpen) return;
+    if (cached) {
+      applyExplainResult(cached);
+      showToast('Из кэша');
+      return;
+    }
+
     const response = await sendMessage({ action: 'EXPLAIN_TEXT', payload });
     if (requestId !== state.requestSeq || !state.modalOpen) return;
     if (response && response.ok) {
-      if (state.currentContext && response.data) state.currentContext.translation = response.data.translation || '';
-      renderResult(response);
+      applyExplainResult(response);
+      writeExplainCache(cacheId, response).catch(() => {});
     } else {
       renderError(response?.error, response?.code);
     }
@@ -737,7 +764,7 @@ function ensurePhrases() {
   if (state.loadingPromise && state.loadingVideoId === videoId) return state.loadingPromise;
 
   state.loadingVideoId = videoId;
-  state.loadingPromise = loadPhrases(videoId)
+  state.loadingPromise = resolvePhrases(videoId)
     .then((phrases) => {
       state.videoId = videoId;
       state.phrases = phrases;
@@ -755,9 +782,24 @@ function ensurePhrases() {
   return state.loadingPromise;
 }
 
+async function resolvePhrases(videoId) {
+  const cached = await readPhraseCache(videoId);
+  if (cached && cached.length) return cached;
+
+  const result = await loadPhrases(videoId);
+  const phrases = result.phrases;
+  if (phrases.length) writePhraseCache(videoId, phrases, result.meta).catch(() => {});
+  return phrases;
+}
+
 async function loadPhrases(videoId) {
   const captured = parseCapturedCaptions(videoId);
-  if (captured.phrases.length) return finalizePhrases(captured.phrases, captured.asr);
+  if (captured.phrases.length) {
+    return {
+      phrases: finalizePhrases(captured.phrases, captured.asr),
+      meta: { source: 'captured', asr: captured.asr, languageCode: '' },
+    };
+  }
 
   const playerResponse = await getPlayerResponse(videoId);
   const tracks = playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
@@ -765,20 +807,182 @@ async function loadPhrases(videoId) {
 
   if (track?.baseUrl) {
     const direct = await loadTrackDirect(track.baseUrl);
-    if (direct.length) return finalizePhrases(direct, track.kind === 'asr');
+    if (direct.length) {
+      return {
+        phrases: finalizePhrases(direct, track.kind === 'asr'),
+        meta: { source: 'direct', asr: track.kind === 'asr', languageCode: track.languageCode || '' },
+      };
+    }
   }
 
   if (Array.isArray(tracks) && tracks.length) {
     const viaPlayer = await captureCaptionsViaPlayer(videoId);
-    if (viaPlayer.phrases.length) return finalizePhrases(viaPlayer.phrases, viaPlayer.asr);
+    if (viaPlayer.phrases.length) {
+      return {
+        phrases: finalizePhrases(viaPlayer.phrases, viaPlayer.asr),
+        meta: { source: 'player', asr: viaPlayer.asr, languageCode: '' },
+      };
+    }
   }
 
   console.warn('[YouTube Subtitle AI Explain] Не удалось получить субтитры. Включите субтитры (CC) в плеере и нажмите кнопку ещё раз.');
-  return [];
+  return { phrases: [], meta: { source: 'none', asr: false, languageCode: '' } };
 }
 
 function finalizePhrases(phrases, asr) {
   return asr ? mergeAsrSentences(phrases) : phrases;
+}
+
+async function readPhraseCache(videoId) {
+  try {
+    const key = PHRASE_CACHE_PREFIX + videoId;
+    const stored = await chrome.storage.local.get(key);
+    const record = stored[key];
+    if (!record || record.schemaVersion !== CACHE_SCHEMA_VERSION) return null;
+    if (!Array.isArray(record.phrases) || !record.phrases.length) return null;
+    if (isExpired(record.savedAt)) {
+      await removeCacheEntry(key, PHRASE_CACHE_INDEX);
+      return null;
+    }
+    return record.phrases;
+  } catch {
+    return null;
+  }
+}
+
+async function writePhraseCache(videoId, phrases, meta) {
+  if (!phrases.length || isPartialTranscription(phrases)) return;
+
+  const key = PHRASE_CACHE_PREFIX + videoId;
+  const record = {
+    videoId,
+    schemaVersion: CACHE_SCHEMA_VERSION,
+    savedAt: Date.now(),
+    source: meta?.source || '',
+    asr: Boolean(meta?.asr),
+    languageCode: meta?.languageCode || '',
+    title: getVideoTitle(),
+    phrases,
+  };
+
+  await chrome.storage.local.set({ [key]: record });
+  await touchCacheIndex(PHRASE_CACHE_INDEX, videoId, record, PHRASE_CACHE_MAX);
+}
+
+function isPartialTranscription(phrases) {
+  const video = getPlayingVideo();
+  const duration = video ? video.duration : 0;
+  if (!duration || !isFinite(duration)) return false;
+
+  const last = phrases[phrases.length - 1];
+  const lastEnd = typeof last?.end === 'number' ? last.end : last?.start || 0;
+  return lastEnd < duration - Math.max(10, duration * 0.05);
+}
+
+function makeExplainCacheId(videoId, model, startSec, text) {
+  return [videoId, model, Math.round((startSec || 0) * 10) / 10, hashText(text)].join(':');
+}
+
+async function readExplainCache(id) {
+  try {
+    const key = EXPLAIN_CACHE_PREFIX + id;
+    const stored = await chrome.storage.local.get(key);
+    const record = stored[key];
+    if (!record || record.schemaVersion !== CACHE_SCHEMA_VERSION) return null;
+    if (isExpired(record.savedAt)) {
+      await removeCacheEntry(key, EXPLAIN_CACHE_INDEX);
+      return null;
+    }
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+async function writeExplainCache(id, response) {
+  const record = {
+    schemaVersion: CACHE_SCHEMA_VERSION,
+    savedAt: Date.now(),
+    model: response.model || '',
+    data: response.data || null,
+    content: response.content || '',
+    reasoning: response.reasoning || '',
+  };
+
+  await chrome.storage.local.set({ [EXPLAIN_CACHE_PREFIX + id]: record });
+  await touchCacheIndex(EXPLAIN_CACHE_INDEX, id, record, EXPLAIN_CACHE_MAX);
+}
+
+function isExpired(savedAt) {
+  return !savedAt || Date.now() - savedAt > CACHE_TTL_MS;
+}
+
+async function touchCacheIndex(indexKey, id, record, max) {
+  const stored = await chrome.storage.local.get(indexKey);
+  const index = stored[indexKey] && typeof stored[indexKey] === 'object' ? stored[indexKey] : {};
+
+  const now = Date.now();
+  const removed = [];
+  for (const [key, value] of Object.entries(index)) {
+    if (!value || now - (value.savedAt || 0) > CACHE_TTL_MS) {
+      delete index[key];
+      removed.push(key);
+    }
+  }
+
+  index[id] = { savedAt: record.savedAt, size: estimateSize(record) };
+
+  const entries = Object.entries(index).sort((a, b) => (a[1].savedAt || 0) - (b[1].savedAt || 0));
+  for (let i = 0; i < entries.length - max; i += 1) {
+    removed.push(entries[i][0]);
+    delete index[entries[i][0]];
+  }
+
+  await chrome.storage.local.set({ [indexKey]: index });
+  if (removed.length) {
+    await chrome.storage.local.remove(removed.map((item) => cacheKeyFor(indexKey, item)));
+  }
+}
+
+async function removeCacheEntry(key, indexKey) {
+  try {
+    const id = keyToId(indexKey, key);
+    const stored = await chrome.storage.local.get(indexKey);
+    const index = stored[indexKey] && typeof stored[indexKey] === 'object' ? stored[indexKey] : {};
+    if (id && index[id]) {
+      delete index[id];
+      await chrome.storage.local.set({ [indexKey]: index });
+    }
+    await chrome.storage.local.remove(key);
+  } catch {
+    // ignore cache cleanup failures
+  }
+}
+
+function cacheKeyFor(indexKey, id) {
+  return indexKey === PHRASE_CACHE_INDEX ? PHRASE_CACHE_PREFIX + id : EXPLAIN_CACHE_PREFIX + id;
+}
+
+function keyToId(indexKey, key) {
+  const prefix = indexKey === PHRASE_CACHE_INDEX ? PHRASE_CACHE_PREFIX : EXPLAIN_CACHE_PREFIX;
+  return key.startsWith(prefix) ? key.slice(prefix.length) : '';
+}
+
+function estimateSize(value) {
+  try {
+    return JSON.stringify(value).length;
+  } catch {
+    return 0;
+  }
+}
+
+function hashText(text) {
+  let hash = 5381;
+  const value = String(text || '');
+  for (let i = 0; i < value.length; i += 1) {
+    hash = ((hash << 5) + hash + value.charCodeAt(i)) >>> 0;
+  }
+  return hash.toString(36);
 }
 
 async function loadTrackDirect(baseUrl) {
